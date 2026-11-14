@@ -7,3 +7,4 @@
 - `art/limo/3d_ee280d55825b4afbb415e5a7_1787593437008.glb` — "Armored VIP Limousine" from the Summer asset store, free license.
 
 Road, freeway barriers, sky shader, lava shader, crack shader and particle textures are generated procedurally in this project.
+- `assets/packs/street`, `buildings`, `cars`, `transit` — Modular Street Pack, Buildings Pack, Realistic Car Pack, Public Transport Pack by Quaternius, CC0 1.0. Source: https://quaternius.com
