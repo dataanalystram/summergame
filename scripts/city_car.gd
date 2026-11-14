@@ -31,6 +31,10 @@ var last_speed := 0.0
 var hit_cool := 0.0
 var ground := 0.0
 var car_size := Vector3(2.2, 1.5, 6.6)
+var airborne := false
+var air_vy := 0.0
+
+signal landed(strength: float)
 var collider: CollisionShape3D
 
 static func model_aabb(root: Node3D) -> AABB:
@@ -143,15 +147,30 @@ func _physics_process(delta: float) -> void:
 	ground = 0.0
 	if world != null and world.has_method("ground_height_at"):
 		ground = world.ground_height_at(global_position.x, global_position.z)
-	if ground < -5.0:
+	var target_y := ground + body_offset
+	if airborne:
+		air_vy -= GRAVITY * delta
+		global_position.y += air_vy * delta
+		rotation.x = lerpf(rotation.x, clampf(air_vy * 0.025, -0.35, 0.35), 1.0 - exp(-4.0 * delta))
+		if global_position.y <= target_y and air_vy < 0.0:
+			if ground < -5.0:
+				plunge()
+				return
+			global_position.y = target_y
+			landed.emit(clampf(-air_vy / 20.0, 0.2, 1.0))
+			airborne = false
+			air_vy = 0.0
+			rotation.x = 0.0
+	elif ground < -5.0:
 		plunge()
 		return
-	var target_y := ground + body_offset
-	if global_position.y < target_y - 0.02:
+	elif global_position.y < target_y - 0.02:
 		global_position.y = minf(target_y, global_position.y + 11.0 * delta)
 	elif global_position.y > target_y + 0.02:
 		global_position.y = maxf(target_y, global_position.y - 18.0 * delta)
 	velocity.y = 0.0
+	if not airborne:
+		rotation.x = 0.0
 
 	velocity.x = forward.x * speed
 	velocity.z = forward.z * speed
@@ -186,6 +205,12 @@ func take_hit(amount: int) -> void:
 		dead = true
 		wrecked.emit()
 
+func launch(vy: float) -> void:
+	if airborne or falling or dead:
+		return
+	airborne = true
+	air_vy = vy
+
 func plunge() -> void:
 	if falling:
 		return
@@ -196,6 +221,8 @@ func plunge() -> void:
 func reset_car(pos: Vector3, yaw: float) -> void:
 	dead = false
 	falling = false
+	airborne = false
+	air_vy = 0.0
 	frozen = false
 	speed = 0.0
 	fall_vel = 0.0

@@ -24,6 +24,8 @@ var t_run := 0.0
 var best := 0.0
 var rng := RandomNumberGenerator.new()
 var half := 0.0
+var buildings: Array[Node3D] = []
+var director: ChaseDirector
 
 func _ready() -> void:
 	rng.seed = 2012
@@ -37,12 +39,19 @@ func _ready() -> void:
 	_build_beacons()
 	_build_hud()
 	_build_sinkholes()
+	director = ChaseDirector.new()
+	add_child(director)
+	director.setup(self)
 	var cfg := ConfigFile.new()
 	if cfg.load(SAVE_PATH) == OK:
 		best = cfg.get_value("run", "best", 0.0)
 	_respawn()
 
 func ground_height_at(x: float, z: float) -> float:
+	if director:
+		var dh := director.height_at(x, z)
+		if dh != 0.0:
+			return dh
 	for s in sinkholes:
 		if s.t > 0.0 and Vector2(x, z).distance_to(Vector2(s.pos.x, s.pos.z)) < s.radius * minf(s.t * 1.5, 1.0):
 			return -12.0
@@ -50,35 +59,44 @@ func ground_height_at(x: float, z: float) -> float:
 
 # ---------- world ----------
 func _environment() -> void:
-	var sky_mat := ShaderMaterial.new()
-	sky_mat.shader = load(SKY_SHADER)
-	sky_mat.set_shader_parameter("zenith_color", Color(0.055, 0.032, 0.04))
-	sky_mat.set_shader_parameter("horizon_color", Color(0.95, 0.42, 0.16))
-	sky_mat.set_shader_parameter("ground_color", Color(0.07, 0.04, 0.035))
-	sky_mat.set_shader_parameter("sun_color", Color(1, 0.72, 0.38))
-	sky_mat.set_shader_parameter("cloud_amount", 0.62)
-	sky_mat.set_shader_parameter("cloud_scale", 2.0)
+	# Matches the film's chase (2:15-4:55): hard Californian sun, pale blue sky going
+	# beige at the horizon, dust haze, warm film grade.
+	var sky_mat := ProceduralSkyMaterial.new()
+	sky_mat.sky_top_color = Color(0.36, 0.52, 0.72)
+	sky_mat.sky_horizon_color = Color(0.86, 0.8, 0.68)
+	sky_mat.ground_horizon_color = Color(0.7, 0.62, 0.5)
+	sky_mat.ground_bottom_color = Color(0.3, 0.26, 0.2)
+	sky_mat.sun_angle_max = 18.0
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
 	var env := Environment.new()
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.6, 0.5, 0.44)
-	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	env.ambient_light_energy = 0.8
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.tonemap_exposure = 1.05
+	env.ssao_enabled = true
+	env.ssao_radius = 1.6
 	env.glow_enabled = true
+	env.glow_bloom = 0.08
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.62, 0.34, 0.2)
-	env.fog_density = 0.0035
+	env.fog_light_color = Color(0.78, 0.7, 0.58)
+	env.fog_density = 0.0016
+	env.fog_aerial_perspective = 0.6
+	env.fog_sky_affect = 0.35
+	env.adjustment_enabled = true
+	env.adjustment_saturation = 0.82
+	env.adjustment_contrast = 1.12
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 	var sun := DirectionalLight3D.new()
-	sun.light_color = Color(1.0, 0.65, 0.35)
-	sun.light_energy = 1.6
-	sun.rotation_degrees = Vector3(-24, 70, 0)
+	sun.light_color = Color(1.0, 0.9, 0.74)
+	sun.light_energy = 2.1
+	sun.rotation_degrees = Vector3(-38, -35, 0)
 	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 260.0
+	sun.directional_shadow_max_distance = 220.0
 	add_child(sun)
 
 func _static_box(pos: Vector3, size: Vector3, mat: Material, collide := true) -> MeshInstance3D:
@@ -108,10 +126,10 @@ func _mat(c: Color, rough := 0.9) -> StandardMaterial3D:
 
 func _ground() -> void:
 	# one big slab of dark rubble ground; roads are drawn on top
-	_static_box(Vector3(0, -0.5, 0), Vector3(half * 2 + 400, 1.0, half * 2 + 400), _mat(Color(0.16, 0.12, 0.1)), false)
+	_static_box(Vector3(0, -0.5, 0), Vector3(half * 2 + 400, 1.0, half * 2 + 400), _mat(Color(0.42, 0.4, 0.36)), false)
 
 func _roads() -> void:
-	var asphalt := _mat(Color(0.07, 0.07, 0.075), 0.85)
+	var asphalt := _mat(Color(0.17, 0.17, 0.17), 0.85)
 	var paint := _mat(Color(0.9, 0.85, 0.7), 0.7)
 	var span := GRID * PITCH + ROAD_W
 	for i in GRID + 1:
@@ -184,7 +202,7 @@ func _city() -> void:
 				var ox := (-1 if k % 2 == 0 else 1) * inner * 0.25
 				var oz := (-1 if k < 2 else 1) * inner * 0.25
 				var ps: PackedScene = packs[rng.randi() % packs.size()]
-				_place_fit(ps, Vector3(cx + ox, 0, cz + oz), rng.randf_range(16.0, 24.0), rng.randi_range(0, 3) * PI * 0.5)
+				buildings.append(_place_fit(ps, Vector3(cx + ox, 0, cz + oz), rng.randf_range(16.0, 24.0), rng.randi_range(0, 3) * PI * 0.5))
 
 func _traffic_props() -> void:
 	var cars := _list(CARS_DIR)
@@ -205,6 +223,8 @@ func _traffic_props() -> void:
 			var on_x := rng.randf() < 0.5
 			var pos := Vector3(line, 0, along) if on_x else Vector3(along, 0, line)
 			var yaw := rng.randf_range(-0.6, 0.6) + (0.0 if on_x else PI * 0.5)
+			if (on_x and absf(line) < 12.0) or (not on_x and absf(along) < 12.0):
+				continue
 			_place_fit(car_packs[rng.randi() % car_packs.size()], pos, 4.6, yaw)
 	if not lights.is_empty():
 		var lp := _load_scene(lights[0])
@@ -222,12 +242,20 @@ func _build_car() -> void:
 	add_child(car)
 	var packed := load(LIMO_PATH) as PackedScene
 	car.attach_model(packed, 6.2)
+	# the limo model faces +Z; turn it so its nose matches CityCar's forward (-Z)
+	var body := car.get_node("Body") as Node3D
+	var pivot := Node3D.new()
+	car.remove_child(body)
+	pivot.add_child(body)
+	car.add_child(pivot)
+	pivot.rotation.y = PI
 	cam = Camera3D.new()
 	cam.fov = 70.0
 	cam.far = 900.0
 	add_child(cam)
 	cam.current = true
-	car.wrecked.connect(func(): _msg("WRECKED - respawning", 2.0); await get_tree().create_timer(2.0).timeout; _respawn())
+	car.wrecked.connect(_on_wrecked)
+	car.landed.connect(func(k: float): director.shake_t = maxf(director.shake_t, k * 1.5))
 
 func _respawn() -> void:
 	for s in sinkholes:
@@ -237,12 +265,28 @@ func _respawn() -> void:
 	beacon_i = 0
 	t_run = 0.0
 	_update_beacon()
-	_msg("Reach the beacons. The city is coming apart.", 4.0)
+	beacon_node.visible = false
+	director.start()
+
+func _on_wrecked() -> void:
+	if director.active:
+		return   # the director restarts the chase
+	_msg("WRECKED - respawning", 2.0)
+	await get_tree().create_timer(2.0).timeout
+	car.reset_car(car.global_position + Vector3(0, 0.5, 0), car.heading)
+
+func on_chase_escaped() -> void:
+	_msg("You made it out of the collapse. Head for the beacons - the airfield is out there.", 5.0)
+	beacon_node.visible = true
+	t_run = 0.0
 
 func _process(delta: float) -> void:
 	if car == null:
 		return
 	t_run += delta
+	if director.active:
+		director.update(delta)
+		return
 	# chase camera
 	var back := -car.forward_vector()
 	var target := car.global_position + back * 11.0 + Vector3(0, 5.2, 0)
@@ -285,8 +329,11 @@ func _finish() -> void:
 	_msg("ESCAPED in %.1fs. Press R to run again." % t_run, 6.0)
 
 func _unhandled_key_input(e: InputEvent) -> void:
-	if e is InputEventKey and e.pressed and e.keycode == KEY_R:
-		_respawn()
+	if e is InputEventKey and e.pressed:
+		if e.keycode == KEY_R:
+			get_tree().reload_current_scene()
+		elif e.keycode == KEY_C or e.keycode == KEY_V:
+			director.handle_key(e.keycode)
 
 # ---------- missions / hazards ----------
 func _build_beacons() -> void:
@@ -338,15 +385,20 @@ func _build_sinkholes() -> void:
 # ---------- HUD ----------
 func _build_hud() -> void:
 	var layer := CanvasLayer.new()
+	layer.layer = 10
 	add_child(layer)
 	label = Label.new()
-	label.position = Vector2(24, 20)
+	label.anchor_top = 1.0
+	label.anchor_bottom = 1.0
+	label.offset_left = 28.0
+	label.offset_top = -52.0
+	label.offset_bottom = -16.0
 	label.add_theme_font_size_override("font_size", 22)
 	label.add_theme_color_override("font_color", Color(1, 0.92, 0.78))
 	layer.add_child(label)
 	msg = Label.new()
 	msg.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	msg.position = Vector2(-300, 90)
+	msg.position = Vector2(-300, 150)
 	msg.size = Vector2(600, 40)
 	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	msg.add_theme_font_size_override("font_size", 28)
