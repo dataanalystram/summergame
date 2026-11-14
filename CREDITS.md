@@ -9,3 +9,5 @@
 Road, freeway barriers, sky shader, lava shader, crack shader and particle textures are generated procedurally in this project.
 - `assets/packs/street`, `buildings`, `cars`, `transit` — Modular Street Pack, Buildings Pack, Realistic Car Pack, Public Transport Pack by Quaternius, CC0 1.0. Source: https://quaternius.com
 - `assets/packs/nature` — Big/Small Palm Tree from Quaternius Desert Pack, CC0 1.0 (exported to GLB with Blender).
+- `assets/packs/people` — Animated Men/Women Characters by Quaternius, CC0 1.0.
+- `assets/textures/*` — PBR textures from ambientCG (ambientcg.com), CC0 1.0.

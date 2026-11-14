@@ -38,6 +38,9 @@ var shake_t := 0.0
 var failed := false
 var rolling := false
 var palm_mat: StandardMaterial3D
+var people: Array[PackedScene] = []
+var runners: Array[Dictionary] = []
+const PEOPLE_DIR := "res://assets/packs/people/"
 
 # ---------------------------------------------------------------- setup
 func setup(w) -> void:
@@ -47,8 +50,12 @@ func setup(w) -> void:
 	_build_ramps()
 	_build_overpass()
 	_build_tower()
+	_build_downtown()
 	_build_wave()
 	_build_letterbox()
+	for f in DirAccess.get_files_at(PEOPLE_DIR):
+		if f.ends_with(".fbx"):
+			people.append(load(PEOPLE_DIR + f))
 	beats = [
 		{"p": 2.0, "cam": "wide", "dur": 3.0, "act": "start"},
 		{"p": 55.0, "cam": "top", "dur": 3.0, "act": "cracks"},
@@ -112,6 +119,8 @@ func update(delta: float) -> void:
 			r["used"] = true
 			car.launch(car.speed * r.h / (r.p1 - r.p0) * 1.15 + 3.0)
 			Engine.time_scale = 0.45
+			if auto_cams and manual_cam == "":
+				_cut("side_low", 1.4)
 			world._msg("HOLD ON!", 1.2)
 	if car.airborne == false and Engine.time_scale < 1.0:
 		Engine.time_scale = 1.0
@@ -139,8 +148,9 @@ func update(delta: float) -> void:
 	if car.dead and not failed:
 		_fail("WRECKED")
 	_update_movers(delta)
+	_update_runners(delta)
 	_update_camera(delta)
-	world.label.text = "%d km/h    HP %d    DUST %dm behind    %dm to go    [C] camera  [V] auto-cuts %s" % [
+	world.label.text = "%d km/h    HP %d    DUST %dm behind    %dm to go    [C] camera  [V] jump-cam %s" % [
 		int(car.speed_kmh()), car.health, int(maxf(behind, 0.0)), int(maxf(END_P - p, 0.0)), ("on" if auto_cams else "off")]
 
 func _fail(why: String) -> void:
@@ -162,8 +172,8 @@ func handle_key(code: int) -> void:
 
 # ---------------------------------------------------------------- beats
 func _run_beat(b: Dictionary) -> void:
-	if b.cam != "" and auto_cams and manual_cam == "":
-		_cut(b.cam, b.dur)
+	pass   # camera stays on the player's chase view; only jumps cut (see launch below)
+	_spawn_crowd(b.p + 60.0, 14)
 	match b.act:
 		"start":
 			world._msg("EARTHQUAKE! DRIVE!", 2.5)
@@ -375,19 +385,9 @@ func _build_overpass() -> void:
 	deck.name = "Deck"
 
 func _build_tower() -> void:
-	var glass := StandardMaterial3D.new()
-	glass.albedo_color = Color(0.32, 0.48, 0.5)
-	glass.metallic = 0.85
-	glass.roughness = 0.08
-	var img := Image.create(64, 64, false, Image.FORMAT_RGB8)
-	img.fill(Color(0.45, 0.62, 0.64))
-	for i in 64:
-		for k in 3:
-			img.set_pixel(i, k, Color(0.15, 0.17, 0.18))
-			img.set_pixel(k, i, Color(0.15, 0.17, 0.18))
-	glass.albedo_texture = ImageTexture.create_from_image(img)
-	glass.uv1_triplanar = true
-	glass.uv1_scale = Vector3(0.28, 0.28, 0.28)
+	var glass: StandardMaterial3D = world.tex_mat("Facade003", 14.0, Color(0.8, 1.0, 1.0), 0.6)
+	glass.roughness = 0.12
+	glass.roughness_texture = null
 	var base_z := START_Z - 720.0
 	# clear the block where the tower stands
 	for b in world.buildings:
@@ -624,3 +624,119 @@ func _update_movers(delta: float) -> void:
 		tw.tween_property(deck, "rotation:x", 0.25, 1.1)
 		_dust_burst(deck.global_position - Vector3(0, 6, 0), 14.0, 70)
 		shake_t = 1.8
+
+
+# ---------------------------------------------------------------- people
+func _spawn_crowd(p_center: float, n: int) -> void:
+	if people.is_empty():
+		return
+	for i in n:
+		var ps: PackedScene = people[randi() % people.size()]
+		var holder := Node3D.new()
+		add_child(holder)
+		var model := ps.instantiate()
+		holder.add_child(model)
+		var bb := CityCar.model_aabb(holder)
+		var s := 1.75 / maxf(bb.size.y, 0.01)
+		holder.scale = Vector3(s, s, s)
+		var side := -1.0 if randf() < 0.5 else 1.0
+		var crossing := randf() < 0.25
+		var pos := Vector3(AVENUE_X + side * randf_range(10.0, 15.0), 0, START_Z - p_center - randf_range(-30.0, 30.0))
+		var vel := Vector3(0, 0, -randf_range(4.5, 7.5))   # fleeing the same way as the limo
+		if crossing:
+			pos.x = AVENUE_X + side * 12.0
+			vel = Vector3(-side * randf_range(4.0, 6.0), 0, -1.0)
+		holder.global_position = pos
+		holder.look_at(pos + vel.normalized(), Vector3.UP, true)
+		var ap := _find_anim(model)
+		if ap:
+			var pick := ""
+			for a in ap.get_animation_list():
+				if a.to_lower().contains("run"):
+					pick = a
+					break
+			if pick == "" and ap.get_animation_list().size() > 0:
+				pick = ap.get_animation_list()[0]
+			if pick != "":
+				var anim := ap.get_animation(pick)
+				anim.loop_mode = Animation.LOOP_LINEAR
+				ap.play(pick)
+				ap.seek(randf() * anim.length)
+		runners.append({"node": holder, "vel": vel, "life": 14.0})
+
+func _find_anim(n: Node) -> AnimationPlayer:
+	if n is AnimationPlayer:
+		return n
+	for c in n.get_children():
+		var a := _find_anim(c)
+		if a:
+			return a
+	return null
+
+func _update_runners(delta: float) -> void:
+	var car: CityCar = world.car
+	for i in range(runners.size() - 1, -1, -1):
+		var r: Dictionary = runners[i]
+		var n: Node3D = r.node
+		r.life -= delta
+		# dodge the limo
+		var d := n.global_position - car.global_position
+		d.y = 0
+		if d.length() < 7.0:
+			var away := Vector3(signf(d.x) if d.x != 0.0 else 1.0, 0, 0) * 9.0
+			r.vel = r.vel.lerp(away, 0.3)
+			n.look_at(n.global_position + r.vel.normalized(), Vector3.UP, true)
+		n.global_position += r.vel * delta
+		if r.life <= 0.0 or world.ground_height_at(n.global_position.x, n.global_position.z) < -5.0:
+			n.queue_free()
+			runners.remove_at(i)
+
+
+# ---------------------------------------------------------------- downtown (film 3:35-4:55: Wilshire mid-rises)
+func _build_downtown() -> void:
+	var sets := [["Facade005", 18.0], ["Facade001", 20.0], ["Facade002", 20.0], ["Facade003", 16.0]]
+	var mats: Array[StandardMaterial3D] = []
+	for st in sets:
+		mats.append(world.tex_mat(st[0], st[1]))
+	var roof: Material = world._mat(Color(0.35, 0.33, 0.3), 0.9)
+	for b in world.buildings:
+		var p: float = START_Z - b.global_position.z
+		if p > 320.0 and absf(b.global_position.x - AVENUE_X) < 75.0:
+			b.visible = false
+	for side in [-1.0, 1.0]:
+		var p := 330.0
+		while p < 960.0:
+			var w := randf_range(22.0, 32.0)
+			var d := randf_range(22.0, 30.0)
+			var h := randf_range(28.0, 95.0)
+			var near_tower: bool = side > 0.0 and absf(p - 720.0) < 30.0
+			var crossing := fmod(p + 20.0, 100.0) < 22.0   # keep side streets open
+			if not near_tower and not crossing:
+				var x: float = AVENUE_X + side * (19.0 + w * 0.5)
+				var mi := MeshInstance3D.new()
+				var bm := BoxMesh.new()
+				bm.size = Vector3(w, h, d)
+				mi.mesh = bm
+				mi.material_override = mats[randi() % mats.size()]
+				var holder := Node3D.new()
+				world.add_child(holder)
+				holder.global_position = Vector3(x, 0, START_Z - p)
+				holder.add_child(mi)
+				mi.position.y = h * 0.5
+				var cap := MeshInstance3D.new()
+				var cm := BoxMesh.new()
+				cm.size = Vector3(w + 0.6, 1.2, d + 0.6)
+				cap.mesh = cm
+				cap.material_override = roof
+				cap.position.y = h + 0.6
+				holder.add_child(cap)
+				var sb := StaticBody3D.new()
+				var cs := CollisionShape3D.new()
+				var bs := BoxShape3D.new()
+				bs.size = bm.size
+				cs.shape = bs
+				cs.position.y = h * 0.5
+				sb.add_child(cs)
+				holder.add_child(sb)
+				world.buildings.append(holder)
+			p += d + randf_range(2.0, 6.0)

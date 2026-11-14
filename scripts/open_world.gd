@@ -118,6 +118,22 @@ func _static_box(pos: Vector3, size: Vector3, mat: Material, collide := true) ->
 		mi.add_child(sb)
 	return mi
 
+# CC0 ambientCG PBR set, mapped in world space so any box size tiles correctly
+func tex_mat(id: String, meters: float, tint := Color.WHITE, metallic := 0.0) -> StandardMaterial3D:
+	var base := "res://assets/textures/%s/%s_2K-JPG_" % [id, id]
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = load(base + "Color.jpg")
+	m.albedo_color = tint
+	m.normal_enabled = true
+	m.normal_texture = load(base + "NormalGL.jpg")
+	m.roughness_texture = load(base + "Roughness.jpg")
+	m.metallic = metallic
+	m.uv1_triplanar = true
+	m.uv1_world_triplanar = true
+	m.uv1_scale = Vector3.ONE / meters
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	return m
+
 func _mat(c: Color, rough := 0.9) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = c
@@ -126,10 +142,10 @@ func _mat(c: Color, rough := 0.9) -> StandardMaterial3D:
 
 func _ground() -> void:
 	# one big slab of dark rubble ground; roads are drawn on top
-	_static_box(Vector3(0, -0.5, 0), Vector3(half * 2 + 400, 1.0, half * 2 + 400), _mat(Color(0.42, 0.4, 0.36)), false)
+	_static_box(Vector3(0, -0.5, 0), Vector3(half * 2 + 400, 1.0, half * 2 + 400), tex_mat("Concrete034", 5.0, Color(0.62, 0.58, 0.52)), false)
 
 func _roads() -> void:
-	var asphalt := _mat(Color(0.17, 0.17, 0.17), 0.85)
+	var asphalt := tex_mat("Asphalt025C", 7.0)
 	var paint := _mat(Color(0.9, 0.85, 0.7), 0.7)
 	var span := GRID * PITCH + ROAD_W
 	for i in GRID + 1:
