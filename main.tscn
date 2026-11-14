@@ -1,0 +1,71 @@
+[gd_scene format=3 uid="uid://dp8ehmx1ggrso"]
+
+[ext_resource type="Script" uid="uid://dhnyhkyhysuoc" path="res://scripts/game.gd" id="1_game"]
+[ext_resource type="Script" uid="uid://cyqsgtquvhgnr" path="res://scripts/hud.gd" id="2_hud"]
+[ext_resource type="Shader" uid="uid://co56g7rcydb4q" path="res://shaders/apocalypse_sky.gdshader" id="3_sky"]
+
+[sub_resource type="ShaderMaterial" id="SkyMaterial_storm"]
+shader = ExtResource("3_sky")
+shader_parameter/zenith_color = Color(0.055, 0.032, 0.04, 1)
+shader_parameter/horizon_color = Color(0.95, 0.42, 0.16, 1)
+shader_parameter/ground_color = Color(0.07, 0.04, 0.035, 1)
+shader_parameter/sun_color = Color(1, 0.72, 0.38, 1)
+shader_parameter/cloud_amount = 0.62
+shader_parameter/cloud_scale = 2.0
+
+[sub_resource type="Sky" id="Sky_storm"]
+sky_material = SubResource("SkyMaterial_storm")
+process_mode = 1
+
+[sub_resource type="Environment" id="Environment_storm"]
+background_mode = 2
+sky = SubResource("Sky_storm")
+ambient_light_source = 3
+ambient_light_color = Color(0.6, 0.5, 0.44, 1)
+ambient_light_sky_contribution = 0.6
+reflected_light_source = 2
+tonemap_mode = 4
+ssao_enabled = true
+ssao_radius = 1.4
+glow_enabled = true
+glow_intensity = 0.7
+glow_bloom = 0.05
+fog_enabled = true
+fog_light_color = Color(0.5, 0.32, 0.22, 1)
+fog_sun_scatter = 0.45
+fog_density = 0.0045
+fog_aerial_perspective = 0.55
+fog_sky_affect = 0.28
+volumetric_fog_enabled = true
+volumetric_fog_density = 0.006
+volumetric_fog_albedo = Color(0.5, 0.36, 0.3, 1)
+volumetric_fog_emission = Color(0.08, 0.035, 0.012, 1)
+volumetric_fog_length = 130.0
+adjustment_enabled = true
+adjustment_contrast = 1.08
+adjustment_saturation = 1.02
+
+[node name="Main" type="Node3D" unique_id=672888515]
+script = ExtResource("1_game")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1406616184]
+environment = SubResource("Environment_storm")
+
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=1714196260]
+light_color = Color(1, 0.8, 0.6, 1)
+light_energy = 2.2
+shadow_enabled = true
+directional_shadow_max_distance = 180.0
+
+[node name="Camera" type="Camera3D" parent="." unique_id=483472621]
+fov = 68.0
+near = 0.08
+far = 800.0
+
+[node name="HUD" type="CanvasLayer" parent="." unique_id=57950514]
+script = ExtResource("2_hud")
+
+[node name="Fill" type="DirectionalLight3D" parent="." unique_id=1334197476]
+transform = Transform3D(-0.50000006, -0.4330127, -0.75, 0, 0.8660254, -0.5, 0.8660254, -0.25000003, -0.43301275, 0, 0, 0)
+light_color = Color(0.55, 0.62, 0.8, 1)
+light_energy = 0.35
