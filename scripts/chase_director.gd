@@ -31,6 +31,7 @@ var wave: Node3D
 var wave_puffs: Array[MeshInstance3D] = []
 var movers: Array[Dictionary] = []  # {node, vel, life, spin}
 var tower_pivot: Node3D
+var tower: FallenTower
 var overpass: Node3D
 var smoke_mat: StandardMaterial3D
 var bars: Array[ColorRect] = []
@@ -68,8 +69,8 @@ func setup(w) -> void:
 		{"p": 470.0, "cam": "chase", "dur": 0.0, "act": "split"},
 		{"p": 505.0, "cam": "side_low", "dur": 2.4, "act": ""},
 		{"p": 575.0, "cam": "wide", "dur": 2.6, "act": "overpass"},
-		{"p": 655.0, "cam": "windshield_up", "dur": 3.2, "act": "tower"},
-		{"p": 735.0, "cam": "side", "dur": 2.6, "act": "facade"},
+		{"p": 548.0, "cam": "", "dur": 0.0, "act": "tower"},
+		{"p": 742.0, "cam": "", "dur": 0.0, "act": "facade"},
 		{"p": 820.0, "cam": "rear", "dur": 2.4, "act": ""},
 		{"p": END_P, "cam": "chase", "dur": 0.0, "act": "escape"},
 	]
@@ -149,6 +150,7 @@ func update(delta: float) -> void:
 		_fail("WRECKED")
 	_update_movers(delta)
 	_update_runners(delta)
+	tower.update(delta, car.global_position)
 	_update_camera(delta)
 	world.label.text = "%d km/h    HP %d    DUST %dm behind    %dm to go    [C] camera  [V] jump-cam %s" % [
 		int(car.speed_kmh()), car.health, int(maxf(behind, 0.0)), int(maxf(END_P - p, 0.0)), ("on" if auto_cams else "off")]
@@ -393,16 +395,14 @@ func _build_tower() -> void:
 	for b in world.buildings:
 		if b.global_position.x > 12.0 and b.global_position.x < 60.0 and absf(b.global_position.z - base_z) < 30.0:
 			b.visible = false
-	tower_pivot = Node3D.new()
-	add_child(tower_pivot)
-	tower_pivot.global_position = Vector3(AVENUE_X + 22.0, 0, base_z)
-	var body := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3(22.0, 150.0, 22.0)
-	body.mesh = bm
-	body.material_override = glass
-	body.position = Vector3(11.0, 75.0, 0)
-	tower_pivot.add_child(body)
+	# the tower that falls across the avenue and becomes the drive-through tunnel
+	for b in world.buildings:
+		if b.global_position.x > -150.0 and b.global_position.x < 60.0 and absf(b.global_position.z - base_z) < 22.0:
+			b.visible = false
+	tower = FallenTower.new()
+	add_child(tower)
+	tower.build(self, glass, Vector3(AVENUE_X + 22.0, 0, base_z))
+	tower_pivot = tower
 
 func _build_wave() -> void:
 	wave = Node3D.new()
@@ -552,10 +552,8 @@ func _spawn_oncoming(z: float) -> void:
 func _drop_tower() -> void:
 	world._msg("LOOK UP!", 2.0)
 	shake_t = 2.5
-	_dust_burst(tower_pivot.global_position + Vector3(10, 10, 0), 16.0, 80)
-	var tw := create_tween()
-	tw.tween_property(tower_pivot, "rotation:z", 0.56, 4.5).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tw.tween_callback(func(): shake_t = 2.0; _dust_burst(Vector3(AVENUE_X - 30.0, 40, tower_pivot.global_position.z), 18.0, 90))
+	_dust_burst(tower.global_position + Vector3(10, 10, 0), 16.0, 80)
+	tower.fall(3.0)
 
 func _facade_rain() -> void:
 	var glass_mat: Material = world._mat(Color(0.55, 0.75, 0.78), 0.1)
@@ -709,7 +707,7 @@ func _build_downtown() -> void:
 			var w := randf_range(22.0, 32.0)
 			var d := randf_range(22.0, 30.0)
 			var h := randf_range(28.0, 95.0)
-			var near_tower: bool = side > 0.0 and absf(p - 720.0) < 30.0
+			var near_tower: bool = absf(p - 720.0) < 26.0
 			var crossing := fmod(p + 20.0, 100.0) < 22.0   # keep side streets open
 			if not near_tower and not crossing:
 				var x: float = AVENUE_X + side * (19.0 + w * 0.5)
